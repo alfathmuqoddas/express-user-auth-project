@@ -4,37 +4,56 @@ const db = require("../models");
 const config = require("../config/auth.config");
 
 const User = db.user;
-const Role = db.role;
-const Op = db.Sequelize.Op;
+const Account = db.accounts;
+const Transaction = db.transactions;
 
-exports.signup = (req, res) => {
-  User.create({
-    username: req.body.username.toLowerCase(),
-    email: req.body.email,
-    password: bcrypt.hashSync(req.body.password, 8),
-  })
-    .then((user) => {
-      if (req.body.roles) {
-        Role.findAll({
-          where: {
-            name: {
-              [Op.or]: req.body.roles,
-            },
-          },
-        }).then((roles) => {
-          user.setRoles(roles).then(() => {
-            res.send({ message: "User was registered successfully!" });
-          });
-        });
-      } else {
-        user.setRoles([1]).then(() => {
-          res.send({ message: "User was registered successfully!" });
-        });
-      }
-    })
-    .catch((err) => {
-      res.status(500).send({ message: err.message });
+exports.signup = async (req, res) => {
+  try {
+    const { username, email, password } = req.body;
+
+    const user = await User.create({
+      username: username.toLowerCase(),
+      email: email,
+      password: bcrypt.hashSync(password, 8),
     });
+
+    let accountNumber;
+    do {
+      accountNumber =
+        Math.floor(Math.random() * (99999999 - 10000000 + 1)) + 10000000;
+    } while (await Account.findOne({ where: { accountNum: accountNumber } }));
+
+    const account = await Account.create({
+      userId: user.userId,
+      accountNum: accountNumber,
+      balance: 500000000.0,
+      updatedAt: new Date(),
+    });
+
+    const transaction = await Transaction.create({
+      fromAccountNum: 1,
+      toAccountNum: account.accountNum,
+      amount: 500000000.0,
+      fees: 0,
+      timestamp: new Date(),
+    });
+
+    if (user.setRoles) {
+      await user.setRoles([1]); // Assuming role ID 1
+    }
+
+    res.status(201).send({
+      message: "User and Account created successfully!",
+      user: { username: user.username, email: user.email },
+      account: {
+        accountNum: account.accountNum,
+        balance: account.balance,
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send({ message: "Error creating user and account" });
+  }
 };
 
 exports.signin = (req, res) => {
